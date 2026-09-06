@@ -305,6 +305,23 @@ export class Game {
       this._reviewCorner = { index: c.index, R: c.R, requiredSight: c.requiredSight };
     }
 
+    // S9 DEFECT FIX (measured on the live build, not inferred).
+    // This block was gated on `startS !== null` ALONE, so the grid was only ever
+    // reordered when the URL also carried `s=` or `corner=`. A bare `?pos=6`
+    // parsed correctly (review.pos === 6), reached this line, and then did
+    // nothing at all - the field kept the default `race.js` grid, which places
+    // karts by INDEX (row = i>>1), so the player (kart 0) sat on the front row
+    // and the race scored them P1. Measured live: `?pos=6` gave player s=1233.71
+    // (the front station) and position 1. The review state silently reported the
+    // exact opposite of what was asked for, which is the same class of lie the
+    // station-sign comment below was already written to prevent.
+    //
+    // `pos=` is an independent axis from station: it must reorder the field
+    // whether or not a station was named. When no station is given, anchor the
+    // reorder on the player's existing grid station so a bare `?pos=n` keeps the
+    // field on the real starting grid and only changes WHO is where.
+    if (startS === null && R.pos > 0) startS = this.race.karts[0].s;
+
     if (startS !== null) {
       // Rivals AHEAD of the player, matching the reference frame (player 4th of
       // 6 with rivals ahead) and giving the chase camera something to look at.
