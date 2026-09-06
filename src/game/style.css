@@ -1,0 +1,131 @@
+/* ==========================================================================
+   Harbour Kart - shell styling.
+   Palette values are the MEASURED reference albedos from docs/ART_DIRECTION.md
+   so the UI sits in the same world as the render, not on top of it.
+   Sandstone #c2b8a5, warm dark #1f1b16, boardwalk #39291f, lagoon #455e55.
+   ========================================================================== */
+:root{
+  --ink:#1f1b16;
+  --sand:#c2b8a5;
+  --sun:#f0c070;
+  --lagoon:#455e55;
+  --wood:#39291f;
+  --danger:#c05038;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0c0b08;overflow:hidden;
+  font-family:"Trebuchet MS",Verdana,system-ui,sans-serif;color:var(--sand);
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+  touch-action:none;overscroll-behavior:none}
+#hk-root{position:fixed;inset:0;overflow:hidden}
+#hk-canvas{display:block;width:100%;height:100%}
+
+/* ---------- screens ---------- */
+.hk-screen{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2.2vh;z-index:40;
+  background:radial-gradient(ellipse at 50% 40%, rgba(31,27,22,.82), rgba(12,11,8,.96));
+  padding:calc(3vh + var(--safe-t)) calc(3vw + var(--safe-r)) calc(3vh + var(--safe-b)) calc(3vw + var(--safe-l));
+  backdrop-filter:blur(3px)}
+.hidden{display:none !important}
+.hk-logo{font-size:clamp(30px,7vw,74px);letter-spacing:.12em;font-weight:800;
+  color:var(--sun);text-shadow:0 2px 0 #6b4a1e,0 0 26px rgba(240,192,112,.30)}
+.hk-logo.sm{font-size:clamp(22px,4.4vw,44px)}
+.hk-sub{opacity:.72;font-size:clamp(12px,1.8vw,18px);letter-spacing:.06em}
+.hk-btns{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:1vh}
+.hk-btn{font:inherit;font-size:clamp(14px,2vw,20px);letter-spacing:.09em;font-weight:700;
+  color:var(--sand);background:rgba(57,41,31,.92);border:2px solid #6e6252;
+  border-radius:10px;padding:14px 30px;cursor:pointer;min-width:150px;min-height:52px;
+  transition:transform .12s ease,background .12s ease}
+.hk-btn:hover{background:#5a4634;transform:translateY(-2px)}
+.hk-btn:active{transform:translateY(1px)}
+.hk-btn.hk-primary{background:var(--sun);color:#2a1d0c;border-color:#f6dca8}
+.hk-help{margin-top:2vh;opacity:.62;font-size:clamp(11px,1.5vw,15px);text-align:center;
+  line-height:1.9;max-width:min(680px,92vw)}
+.hk-help b{color:var(--sun);background:rgba(0,0,0,.35);padding:2px 7px;border-radius:5px}
+.hk-row{display:flex;align-items:center;justify-content:space-between;gap:20px;
+  width:min(460px,88vw);font-size:clamp(13px,1.7vw,17px)}
+.hk-seg{display:flex;gap:6px}
+.hk-seg button,.hk-toggle{font:inherit;font-size:13px;font-weight:700;color:var(--sand);
+  background:rgba(57,41,31,.9);border:1px solid #6e6252;border-radius:7px;
+  padding:9px 14px;cursor:pointer;min-height:40px}
+.hk-seg button.on{background:var(--sun);color:#2a1d0c}
+.hk-note{opacity:.5;font-size:12px;max-width:min(460px,88vw);line-height:1.6;text-align:center}
+
+/* ---------- countdown / banner ---------- */
+.hk-countdown{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);
+  font-size:clamp(64px,17vw,190px);font-weight:900;color:var(--sun);z-index:35;
+  text-shadow:0 4px 0 #6b4a1e,0 0 46px rgba(240,192,112,.45);pointer-events:none}
+.hk-countdown.pop{animation:hkpop .34s ease-out}
+@keyframes hkpop{from{transform:translate(-50%,-50%) scale(1.7);opacity:.25}
+                 to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+.hk-banner{position:absolute;left:50%;top:22%;transform:translateX(-50%);z-index:34;
+  font-size:clamp(17px,3.4vw,38px);font-weight:800;letter-spacing:.1em;color:var(--sun);
+  background:rgba(12,11,8,.55);padding:9px 26px;border-radius:9px;
+  text-shadow:0 2px 6px rgba(0,0,0,.8);pointer-events:none;white-space:pre}
+
+/* ---------- item slot ---------- */
+.hk-item{position:absolute;left:calc(2.2vw + var(--safe-l));top:calc(11vh + var(--safe-t));
+  width:clamp(58px,7.4vw,86px);height:clamp(58px,7.4vw,86px);z-index:30;
+  border:3px solid rgba(240,192,112,.85);border-radius:12px;
+  background:rgba(12,11,8,.42);display:flex;align-items:center;justify-content:center;
+  font-size:clamp(9px,1.1vw,13px);font-weight:800;letter-spacing:.06em;color:var(--sun);
+  text-align:center;pointer-events:none}
+.hk-item.empty{border-color:rgba(194,184,165,.26);color:rgba(194,184,165,.35)}
+
+/* ---------- results ---------- */
+.hk-table{border-collapse:collapse;font-size:clamp(12px,1.7vw,17px);
+  background:rgba(12,11,8,.5);border-radius:9px;overflow:hidden}
+.hk-table th{background:rgba(110,98,82,.5);padding:9px 15px;letter-spacing:.08em;font-size:.85em}
+.hk-table td{padding:8px 15px;border-top:1px solid rgba(110,98,82,.3);text-align:center}
+.hk-table tr.me td{background:rgba(240,192,112,.18);color:var(--sun);font-weight:800}
+
+/* ---------- touch controls ----------
+   LEFT HALF = steering, RIGHT HALF = throttle/brake. The 50vw boundary is what
+   makes one-thumb-per-side work and is what the QA harness measures for
+   overlap. Pads sit inside the safe-area insets on every edge.            */
+.hk-touch{position:absolute;inset:0;z-index:25;pointer-events:none}
+.hk-pad{position:absolute;pointer-events:auto;border-radius:16px;
+  display:flex;align-items:flex-end;justify-content:center;
+  font-size:11px;font-weight:800;letter-spacing:.13em;padding-bottom:8px;
+  color:rgba(240,192,112,.62);background:rgba(31,27,22,.30);
+  border:2px solid rgba(240,192,112,.30);touch-action:none}
+.hk-pad.active{background:rgba(240,192,112,.24);border-color:rgba(240,192,112,.85)}
+.hk-steer{left:calc(2vw + var(--safe-l));bottom:calc(3vh + var(--safe-b));
+  width:min(44vw,300px);height:min(30vh,190px)}
+.hk-throttle{right:calc(2vw + var(--safe-r));bottom:calc(3vh + var(--safe-b));
+  width:min(21vw,140px);height:min(30vh,190px)}
+.hk-brake{right:calc(2vw + var(--safe-r));bottom:calc(3vh + var(--safe-b));
+  width:min(21vw,140px);height:min(14vh,88px);
+  transform:translateX(calc(-1 * min(22vw,148px)))}
+.hk-drift{right:calc(2vw + var(--safe-r));bottom:calc(18vh + var(--safe-b));
+  width:min(21vw,140px);height:min(13vh,84px);
+  transform:translateX(calc(-1 * min(22vw,148px)))}
+.hk-itembtn{right:calc(2vw + var(--safe-r));top:calc(12vh + var(--safe-t));
+  width:min(17vw,104px);height:min(9vh,60px)}
+.hk-pausebtn{position:absolute;left:50%;top:calc(1.2vh + var(--safe-t));transform:translateX(-50%);
+  z-index:31;font:inherit;font-weight:900;font-size:15px;color:var(--sun);
+  background:rgba(31,27,22,.6);border:2px solid rgba(240,192,112,.45);
+  border-radius:9px;width:52px;height:44px;cursor:pointer}
+
+/* ---------- review badge ---------- */
+.hk-review{position:absolute;right:calc(1vw + var(--safe-r));bottom:calc(1vh + var(--safe-b));
+  z-index:45;font-size:11px;font-weight:800;letter-spacing:.14em;
+  color:#0c0b08;background:var(--danger);padding:5px 11px;border-radius:5px;opacity:.9}
+
+/* ---------- impact flashes ----------
+   A collision must be VISIBLE, not only audible. Vignette rather than a
+   full-screen wash so the corner ahead stays readable during the hit.     */
+body.hit-barrier #hk-root::after,body.hit-kart #hk-root::after{
+  content:"";position:absolute;inset:0;z-index:28;pointer-events:none;
+  box-shadow:inset 0 0 130px 34px rgba(192,80,56,.55)}
+body.hit-kart #hk-root::after{box-shadow:inset 0 0 110px 26px rgba(240,192,112,.42)}
+
+/* ---------- reduced motion ----------
+   Motion is removed. INFORMATION is not: banners, countdown glyphs and flashes
+   still appear, they simply do not animate.                               */
+body.reduced *{animation:none !important;transition:none !important}
+body.reduced .hk-countdown.pop{animation:none !important}
