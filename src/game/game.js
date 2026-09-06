@@ -320,7 +320,26 @@ export class Game {
     // whether or not a station was named. When no station is given, anchor the
     // reorder on the player's existing grid station so a bare `?pos=n` keeps the
     // field on the real starting grid and only changes WHO is where.
-    if (startS === null && R.pos > 0) startS = this.race.karts[0].s;
+    // SECOND S9 DEFECT ON THE SAME LINE, also measured live rather than reasoned.
+    // With the gate above fixed, `?pos=6` reached the placement loop, `_reviewOrder(6)`
+    // correctly returned [1,2,3,4,5,0] and the player correctly took the LOWEST
+    // station - and the race still scored them P1. Cause: the loop anchors the
+    // PLAYER on startS and pushes rivals to LARGER s. The starting grid sits at
+    // s = 1233.8 on a 1236.2 m lap, so `startS + 5*4.4` wraps past the start/finish
+    // line to s = 19.8. Those rivals are then a lap DOWN on the bookkeeping, and
+    // the player - dead last on the road - is scored the leader. The placement was
+    // right; the wrap was the lie.
+    //
+    // For a bare `?pos=n` there is no station being requested, so anchor the
+    // LEADER at the grid front and lay the field out BEHIND it. Nothing wraps,
+    // and the player still lands exactly `pos-1` rows back. An explicit `s=`/
+    // `corner=` URL keeps the old player-anchored behaviour, because there the
+    // player's station IS the derived braking point and must not move.
+    let anchorLeader = false;
+    if (startS === null && R.pos > 0) {
+      startS = this.race.karts[0].s;
+      anchorLeader = true;
+    }
 
     if (startS !== null) {
       // Rivals AHEAD of the player, matching the reference frame (player 4th of
@@ -345,7 +364,8 @@ export class Game {
       for (let n = 0; n < order.length; n++) {
         const i = order[n];
         // Ahead of the player => further along the course => larger s.
-        const s = ((startS + (meSlot - n) * 4.4) % len + len) % len;
+        const base = anchorLeader ? 0 : meSlot;   // leader-anchored vs player-anchored
+        const s = ((startS + (base - n) * 4.4) % len + len) % len;
         course.sampleInto(s, this._smp);
         const lane = ((n % 2) ? 1 : -1) * LANE_OFFSET;
         const k = this.race.karts[i];
