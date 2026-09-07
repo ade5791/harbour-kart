@@ -42,6 +42,7 @@
 
 import * as THREE from 'three';
 import { HarbourBoats, WATER_Y } from './boats.js';
+import { HarbourLandmarks } from './landmarks.js';
 import { REGION, SUN, hexToLinear } from './palette.js';
 import {
   HALF_W, KERB_W, KERB_H, CLEAR_RADIUS, WATER_OFFSET, POST_H
@@ -794,6 +795,17 @@ export class Harbour {
   }
 
   async loadBoats() {
+    this.landmarks = new HarbourLandmarks(this.track);
+    this.group.add(this.landmarks.group);
+    try {
+      await this.landmarks.load();
+      this.stats.landmarks = this.landmarks.items.length;
+    } catch (error) {
+      this.landmarks.dispose();
+      this.landmarks.status = 'failed';
+      this.landmarkError = String(error.message || error);
+      console.warn('Harbour landmarks unavailable: ' + this.landmarkError);
+    }
     this.boats = new HarbourBoats(this.track);
     this.group.add(this.boats.group);
     try {
@@ -878,6 +890,7 @@ export class Harbour {
   }
 
   dispose() {
+    if (this.landmarks) this.landmarks.dispose();
     if (this.boats) this.boats.dispose();
     for (const o of this._owned) { if (o && o.dispose) o.dispose(); }
     this._owned.length = 0;

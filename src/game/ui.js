@@ -114,7 +114,10 @@ export class UI {
     // ---- touch controls ----
     this.touch = el('div', 'hk-touch hidden', 'touch-controls');
     this.padSteer = el('div', 'hk-pad hk-steer', 'pad-steer');
-    this.padSteer.innerHTML = '<span>STEER</span>';
+    this.padSteer.setAttribute('aria-label', 'Steering: hold left or right half; slide to adjust');
+    this.padSteer.innerHTML = '<span class="hk-steer-side hk-steer-left">&lt;<small>LEFT</small></span>' +
+      '<span class="hk-steer-side hk-steer-right">&gt;<small>RIGHT</small></span>' +
+      '<span class="hk-steer-label">HOLD TO STEER</span><i class="hk-steer-thumb" aria-hidden="true"></i>';
     this.padThrottle = el('div', 'hk-pad hk-throttle', 'pad-throttle');
     this.padThrottle.innerHTML = '<span>GO</span>';
     this.padBrake = el('div', 'hk-pad hk-brake', 'pad-brake');

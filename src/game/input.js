@@ -105,7 +105,20 @@ export class InputSystem {
    */
   addZone(el, kind) {
     if (!el) return this;
+    const steerAt = (e) => {
+      const t = this.touch, r = el.getBoundingClientRect();
+      t.steerX0 = r.width * 0.5;
+      t.steerX = e.clientX - r.left;
+      let d = t.steerX - t.steerX0;
+      d = Math.sign(d) * Math.max(0, Math.abs(d) - TOUCH_DEADZONE);
+      const radius = Math.max(1, Math.min(TOUCH_PAD_RADIUS, r.width * 0.5 - TOUCH_DEADZONE));
+      t.steerVal = Math.max(-1, Math.min(1, d / radius));
+      el.dataset.direction = t.steerVal < 0 ? 'left' : t.steerVal > 0 ? 'right' : 'center';
+      el.style.setProperty('--steer', String(t.steerVal));
+    };
     const down = (e) => {
+      // Keep the original steering owner if another finger hits this zone.
+      if (kind === 'steer' && this.touch.steerId >= 0) return;
       e.preventDefault();
       this.stats.touchEvents++;
       this._livePointers.add(e.pointerId);
@@ -117,12 +130,9 @@ export class InputSystem {
       const t = this.touch;
       t.active = true;
       if (kind === 'steer') {
-        // Anchor at first contact so the thumb does not have to find a centre.
+        // Fixed centre: pressing either labelled half turns immediately.
         t.steerId = e.pointerId;
-        const r = el.getBoundingClientRect();
-        t.steerX0 = e.clientX - r.left;
-        t.steerX = t.steerX0;
-        t.steerVal = 0;
+        steerAt(e);
       } else if (kind === 'throttle') { t.throttleIds.add(e.pointerId); }
       else if (kind === 'brake') { t.brakeIds.add(e.pointerId); }
       else if (kind === 'drift') { t.driftIds.add(e.pointerId); }
@@ -132,14 +142,7 @@ export class InputSystem {
       const t = this.touch;
       if (kind === 'steer' && e.pointerId === t.steerId) {
         e.preventDefault();
-        const r = el.getBoundingClientRect();
-        t.steerX = e.clientX - r.left;
-        let d = t.steerX - t.steerX0;
-        if (Math.abs(d) < TOUCH_DEADZONE) d = 0;
-        else d = d > 0 ? d - TOUCH_DEADZONE : d + TOUCH_DEADZONE;
-        let v = d / TOUCH_PAD_RADIUS;
-        if (v > 1) v = 1; else if (v < -1) v = -1;
-        t.steerVal = v;
+        steerAt(e);
       }
     };
     const up = (e) => {
@@ -162,7 +165,14 @@ export class InputSystem {
       } else if (kind === 'throttle') { t.throttleIds.delete(e.pointerId); }
       else if (kind === 'brake') { t.brakeIds.delete(e.pointerId); }
       else if (kind === 'drift') { t.driftIds.delete(e.pointerId); }
-      el.classList.remove('held');
+      const held = kind === 'steer' ? t.steerId >= 0 :
+        kind === 'throttle' ? t.throttleIds.size > 0 :
+        kind === 'brake' ? t.brakeIds.size > 0 : t.driftIds.size > 0;
+      el.classList.toggle('held', held);
+      if (kind === 'steer' && !held) {
+        el.dataset.direction = 'center';
+        el.style.setProperty('--steer', '0');
+      }
       t.active = t.steerId >= 0 || t.throttleIds.size > 0 ||
                  t.brakeIds.size > 0 || t.driftIds.size > 0;
     };
@@ -211,6 +221,13 @@ export class InputSystem {
     this.touch.driftIds.clear();
     this.touch.active = false;
     this._livePointers.clear();
+    for (const zone of this._zones) {
+      zone.el.classList.remove('held');
+      if (zone.kind === 'steer') {
+        zone.el.dataset.direction = 'center';
+        zone.el.style.setProperty('--steer', '0');
+      }
+    }
   }
 
   _any(list) {
@@ -237,7 +254,9 @@ export class InputSystem {
     else if (d < -step) this._steerKey -= step;
     else this._steerKey = want;
 
-    s.steer = (t.steerId >= 0) ? t.steerVal : this._steerKey;
+    // UI uses screen-space right-positive; Vehicle uses yaw/left-positive.
+    // Convert exactly once at the input boundary, for BOTH keyboard and touch.
+    s.steer = -((t.steerId >= 0) ? t.steerVal : this._steerKey);
 
     // ---- throttle / brake ----
     // Touch and keyboard are OR-ed, so a hybrid device (touch laptop) works.

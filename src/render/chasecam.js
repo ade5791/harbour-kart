@@ -310,7 +310,12 @@ export class ChaseCamera {
     this._targetPt.set(this._look.x, this._look.y + y, this._look.z);
     this.camera.lookAt(this._targetPt);
 
-    const fov = chaseFov(speed);
+    const baseFov = chaseFov(speed);
+    // Preserve at least the square-view horizontal coverage on narrow screens.
+    // Landscape framing and the collision-safe camera boom remain unchanged.
+    const aspect = Math.max(0.25, this.camera.aspect);
+    const fov = aspect < 1 ? Math.min(105,
+      2 * Math.atan(Math.tan(baseFov * Math.PI / 360) / aspect) * 180 / Math.PI) : baseFov;
     if (Math.abs(this.camera.fov - fov) > 0.01) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();

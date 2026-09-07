@@ -129,3 +129,21 @@ body.hit-kart #hk-root::after{box-shadow:inset 0 0 110px 26px rgba(240,192,112,.
    still appear, they simply do not animate.                               */
 body.reduced *{animation:none !important;transition:none !important}
 body.reduced .hk-countdown.pop{animation:none !important}
+
+/* Mobile input feedback and adaptive race instruments. */
+.hk-pad.held{background:rgba(240,192,112,.24);border-color:rgba(240,192,112,.85)}
+.hk-steer-side{position:absolute;top:8%;width:48%;height:70%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:30px;border-radius:10px;pointer-events:none}
+.hk-steer-left{left:0}.hk-steer-right{right:0}
+.hk-steer-side small{font-size:10px;letter-spacing:.1em}
+.hk-steer-label{font-size:9px;pointer-events:none}
+.hk-steer[data-direction="left"] .hk-steer-left,.hk-steer[data-direction="right"] .hk-steer-right{color:#fff4d7;background:rgba(240,192,112,.22)}
+.hk-steer-thumb{position:absolute;bottom:26px;width:10px;height:5px;border-radius:3px;background:#ffd9a8;left:calc(50% + var(--steer,0) * 40%);transform:translateX(-50%);pointer-events:none}
+@media (pointer:coarse),(max-width:600px){
+ .hk-hud [data-hud-box]:not([data-hud-box="waypoint"]){transform:none!important;font-size:16px!important;line-height:1.2!important}
+ .hk-hud .hk-position{left:calc(12px + var(--safe-l))!important;top:calc(12px + var(--safe-t))!important}
+ .hk-hud .hk-lap{left:calc(76px + var(--safe-l))!important;top:calc(12px + var(--safe-t))!important}
+ .hk-hud .hk-timer{left:auto!important;right:calc(12px + var(--safe-r));top:calc(12px + var(--safe-t))!important}
+ .hk-hud .hk-speed{left:auto!important;right:calc(12px + var(--safe-r));top:auto!important;bottom:calc(min(30vh,190px) + 3vh + 12px + var(--safe-b));font-size:18px!important}
+ .hk-pausebtn{top:calc(44px + var(--safe-t))}
+ .hk-itembtn{top:calc(44px + var(--safe-t));min-width:52px;min-height:44px}
+}
