@@ -164,6 +164,7 @@ export class Game {
       chase: this.chase, dust: this.dust, playerId: 0
     });
     this.hud = new HUD(this.root);
+    this.hud.initMap(this.track.course, this.race.karts);
     // Waypoint arrow over the track (reference frame). Built from the REAL
     // course corner list and projected through the REAL chase camera every
     // frame. See src/render/waypoint.js for the S9 defect this repairs.

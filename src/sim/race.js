@@ -28,7 +28,7 @@ import {
   DT, LAP_COUNT, FIELD_SIZE, CHECKPOINTS_PER_LAP, V_TOP,
   TRACK_W_ROUNDED,
   RESPAWN_STUCK_TIME, RESPAWN_MIN_PROGRESS, RESPAWN_OFFTRACK_TIME,
-  RESPAWN_LOST_TIME, RESPAWN_SPEED
+  RESPAWN_LOST_TIME, RESPAWN_SPEED, KART_RESTITUTION
 } from '../core/config.js';
 import { KERB_W } from './track.js';
 
@@ -508,7 +508,7 @@ export class Race {
         //     field jams (off-track 28% of steps).
         // Equal-mass 1D impulse along the contact normal with restitution e:
         //     dv = -(1 + e) * closing / 2   applied to A, and +dv to B.
-        // e = 0.25 is INSPECTED (arcade karts bounce a little, not like billiards);
+        // Restitution is an authored soft-contact setting from core/config.js;
         // what is NOT inspected is that the exchange conserves momentum and can
         // only ever REMOVE closing speed, which is what makes it physical.
         if (closing > 0) {
@@ -523,7 +523,7 @@ export class Race {
           // message); it must not gate the FACT that contact occurred.
           a.lastContact = this.time;
           b.lastContact = this.time;
-          const e = 0.25;
+          const e = KART_RESTITUTION;
           const dv = -(1 + e) * closing * 0.5;
           // Convert the world-frame normal impulse into each kart's body frame.
           // forward = (-sin yaw, -cos yaw), right = (cos yaw, -sin yaw).

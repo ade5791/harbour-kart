@@ -94,8 +94,10 @@ html,body{margin:0;height:100%;background:#0c0b08;overflow:hidden;
   color:rgba(240,192,112,.62);background:rgba(31,27,22,.30);
   border:2px solid rgba(240,192,112,.30);touch-action:none}
 .hk-pad.active{background:rgba(240,192,112,.24);border-color:rgba(240,192,112,.85)}
-.hk-steer{left:calc(2vw + var(--safe-l));bottom:calc(3vh + var(--safe-b));
-  width:min(44vw,300px);height:min(30vh,190px)}
+.hk-steer{left:calc(3vw + var(--safe-l));bottom:calc(3vh + var(--safe-b));
+  width:min(34vw,30vh,156px);height:min(34vw,30vh,156px);padding:0;border-radius:50%;
+  background:radial-gradient(circle,rgba(14,32,38,.75) 0 35%,rgba(22,41,44,.45) 36% 65%,rgba(240,192,112,.14) 66%);
+  box-shadow:inset 0 0 0 5px rgba(255,217,168,.07),0 3px 15px #0005}
 .hk-throttle{right:calc(2vw + var(--safe-r));bottom:calc(3vh + var(--safe-b));
   width:min(21vw,140px);height:min(30vh,190px)}
 .hk-brake{right:calc(2vw + var(--safe-r));bottom:calc(3vh + var(--safe-b));
@@ -135,9 +137,13 @@ body.reduced .hk-countdown.pop{animation:none !important}
 .hk-steer-side{position:absolute;top:8%;width:48%;height:70%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:30px;border-radius:10px;pointer-events:none}
 .hk-steer-left{left:0}.hk-steer-right{right:0}
 .hk-steer-side small{font-size:10px;letter-spacing:.1em}
-.hk-steer-label{font-size:9px;pointer-events:none}
+.hk-steer-label{position:absolute;bottom:8px;font-size:9px;pointer-events:none}
+.hk-minimap{position:absolute;left:calc(12px + var(--safe-l,0px));top:calc(78px + var(--safe-t,0px));width:clamp(88px,13vw,154px);height:clamp(76px,11vw,132px);border:1px solid #ffe2ad66;border-radius:12px;background:rgba(9,28,35,.8);box-shadow:0 3px 12px #0004}
+@media(max-height:450px){.hk-minimap{top:calc(46px + var(--safe-t,0px));width:100px;height:84px}}
 .hk-steer[data-direction="left"] .hk-steer-left,.hk-steer[data-direction="right"] .hk-steer-right{color:#fff4d7;background:rgba(240,192,112,.22)}
-.hk-steer-thumb{position:absolute;bottom:26px;width:10px;height:5px;border-radius:3px;background:#ffd9a8;left:calc(50% + var(--steer,0) * 40%);transform:translateX(-50%);pointer-events:none}
+.hk-steer-thumb{position:absolute;top:50%;left:50%;width:36%;height:36%;border-radius:50%;background:radial-gradient(circle at 35% 25%,#ffe4b5,#b78955);border:2px solid #ffe8c4;box-shadow:0 4px 10px #0008;transform:translate(calc(-50% + var(--stick-x,0px)),calc(-50% + var(--stick-y,0px)));pointer-events:none}
+.hk-steer.held{border-color:#ffe4b5;background-color:#fff1}
+.hk-steer.held .hk-steer-thumb{box-shadow:0 2px 12px #ffd9a866}
 @media (pointer:coarse),(max-width:600px){
  .hk-hud [data-hud-box]:not([data-hud-box="waypoint"]){transform:none!important;font-size:16px!important;line-height:1.2!important}
  .hk-hud .hk-position{left:calc(12px + var(--safe-l))!important;top:calc(12px + var(--safe-t))!important}

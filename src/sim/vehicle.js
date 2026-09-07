@@ -56,6 +56,7 @@ import {
   AIR_RHO, CD_A, C_RR, ENGINE_POWER, F_DRIVE_MAX, F_BRAKE_MAX, V_POWER_REF,
   TYRE_B, TYRE_C, TYRE_E, V_SLIP_MIN,
   STEER_MAX, STEER_RATE, STEER_RETURN, STEER_SPEED_FALLOFF,
+  STEER_GRIP_TARGET, STEER_SLIP_ALLOWANCE, CORNER_POWER_RESERVE,
   DRIFT_MIN_SPEED, DRIFT_STARTUP, DRIFT_MIN_STEER_FRAC, DRIFT_REAR_GRIP,
   DRIFT_SUSTAIN_STEER_FRAC, DRIFT_SUSTAIN_REAR_SAT, DRIFT_SPIN_BETA,
   DRIFT_CHARGE_RATE, DRIFT_TIER_1, DRIFT_TIER_2, DRIFT_MAX_CHARGE,
@@ -128,6 +129,7 @@ export class Vehicle {
     this.steerAngle = 0; // rad at the road wheels, after rate limiting
 
     // ---- drift resource ----
+    this._driftRecovery = false;
     this.driftState = DRIFT_STATE.NONE;
     this.driftHeld = 0;      // s of qualifying input held
     this.driftCharge = 0;    // s of accumulated sustain
@@ -161,6 +163,7 @@ export class Vehicle {
     this.x = x; this.z = z; this.yaw = yaw;
     this.u = speed; this.v = 0; this.r = 0;
     this.steerAngle = 0;
+    this._driftRecovery = false;
     this.driftState = DRIFT_STATE.NONE;
     this.driftHeld = 0; this.driftCharge = 0; this.driftDir = 0;
     this.boostTimer = 0; this.lastBoostTier = 0;
@@ -207,11 +210,22 @@ export class Vehicle {
   step(input, dt) {
     const h = dt === undefined ? DT : dt;
 
+    // Preserve the deliberate-drift force balance through release recovery.
+    // Clear only once lateral motion and yaw settle, not on the button edge.
+    if (input.drift) this._driftRecovery = true;
+    else if (Math.abs(this.v) < 0.5 && Math.abs(this.r) < 0.2) this._driftRecovery = false;
+    const driftControl = input.drift || this._driftRecovery;
+
     // ---- 1. STEERING: rate-limited toward the commanded angle ----------------
     const auth = this.steerAuthority();
     let cmd = input.steer;
     if (cmd > 1) cmd = 1; else if (cmd < -1) cmd = -1;
-    const target = cmd * auth;
+    // Cap normal full-lock demand to a grip-aware angle. Low-speed hairpins
+    // keep the original lock; deliberate drift keeps countersteering authority.
+    const safeAuth = Math.min(auth, Math.atan(WHEELBASE * MU_LAT * G *
+      this.gripScale * STEER_GRIP_TARGET / Math.max(1, this.u * this.u)) + STEER_SLIP_ALLOWANCE);
+    // Preserve small-input gain for both people and AI; only clip excess lock.
+    const target = driftControl ? cmd * auth : Math.max(-safeAuth, Math.min(safeAuth, cmd * auth));
     const rate = (cmd === 0 ? STEER_RETURN : STEER_RATE) * h;
     if (this.steerAngle < target) {
       this.steerAngle = Math.min(target, this.steerAngle + rate);
@@ -278,6 +292,20 @@ export class Vehicle {
     // Drift payoff. NEVER while braking - see the defect note in config.js s10.
     if (this.boostTimer > 0 && input.brake <= 0) {
       fx += DRIFT_BOOST_FORCE;
+    }
+
+    // Rear-drive traction control trades drive force for corner grip. Both
+    // actual yaw demand and rack demand count, so lifting steering does not
+    // instantly unload the rear tyres while the kart is still rotating.
+    // Do not alter braking, reverse, or the deliberate drift resource.
+    if (fx > 0 && this.u > 1 && !driftControl && this.boostTimer <= 0) {
+      const demand = Math.max(Math.abs(this.u * this.r),
+        this.u * this.u * Math.abs(Math.tan(delta)) / WHEELBASE);
+      const slipDemand = Math.abs(Math.atan2(this.v - CG_TO_REAR * this.r, this.u)) / ALPHA_PEAK;
+      const lateral = Math.min(CORNER_POWER_RESERVE, Math.max(slipDemand,
+        demand / (MU_LAT * G * Math.max(0.1, this.gripScale))));
+      const driveCap = MU_LONG * FZ_REAR * Math.sqrt(1 - lateral * lateral);
+      fx = Math.min(fx, driveCap);
     }
 
     // Resistance. Drag is quadratic; rolling resistance is constant and opposes
@@ -529,7 +557,9 @@ export class Vehicle {
   // would silently tolerate divergence below the print precision.
   // ---------------------------------------------------------------------------
   snapshot(out) {
-    const o = out || new Float64Array(16);
+    const o = out || new Float64Array(17);
+    if (o.length < 17) throw new Error('Vehicle snapshot needs 17 fields');
+    o[16] = this._driftRecovery ? 1 : 0;
     o[0] = this.x; o[1] = this.z; o[2] = this.yaw;
     o[3] = this.u; o[4] = this.v; o[5] = this.r;
     o[6] = this.steerAngle; o[7] = this.driftHeld; o[8] = this.driftCharge;
@@ -540,6 +570,7 @@ export class Vehicle {
   }
 
   restore(o) {
+    this._driftRecovery = o.length > 16 ? o[16] === 1 : o[10] !== DRIFT_STATE.NONE;
     this.x = o[0]; this.z = o[1]; this.yaw = o[2];
     this.u = o[3]; this.v = o[4]; this.r = o[5];
     this.steerAngle = o[6]; this.driftHeld = o[7]; this.driftCharge = o[8];
@@ -552,7 +583,7 @@ export class Vehicle {
 
 // FNV-1a over the IEEE-754 bytes of a Float64Array. Allocation-free given a
 // caller-supplied scratch buffer; used only by probes, never on the hot path.
-const _hashBuf = new Float64Array(16);
+const _hashBuf = new Float64Array(17);
 const _hashBytes = new Uint8Array(_hashBuf.buffer);
 export function stateHash(veh) {
   veh.snapshot(_hashBuf);

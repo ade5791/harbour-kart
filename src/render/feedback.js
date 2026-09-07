@@ -35,13 +35,13 @@ import * as THREE from 'three';
 import { KART_W, V_TOP } from '../core/config.js';
 
 // Shake magnitudes in metres of throw at the chassis, scaled by impact speed.
-// A 28.6 m/s wall hit throws the chassis a visible 0.06 m; a 2 m/s nudge 0.004 m.
-export const SHAKE_PER_MS   = 0.0021;   // m per (m/s) of impact speed
-export const SHAKE_MAX      = 0.060;    // m, clamp
-export const SHAKE_T_MIN    = 0.12;     // s
-export const SHAKE_T_MAX    = 0.42;     // s
-export const IMPULSE_PER_MS = 0.0060;   // camera m per (m/s)
-export const IMPULSE_MAX    = 0.17;     // m
+// Brief, readable bumps instead of large camera/chassis throws.
+export const SHAKE_PER_MS   = 0.0011;   // m per (m/s) of impact speed
+export const SHAKE_MAX      = 0.032;    // m, clamp
+export const SHAKE_T_MIN    = 0.08;     // s
+export const SHAKE_T_MAX    = 0.24;     // s
+export const IMPULSE_PER_MS = 0.0025;   // camera m per (m/s)
+export const IMPULSE_MAX    = 0.075;    // m
 export const STRIKE_MIN     = 1.0;      // m/s outward closing speed: below this a
                                         // barrier contact is a grind, not a strike
 export const KERB_RUMBLE_MAG = 0.006;   // m, continuous while on the kerb

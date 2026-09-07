@@ -387,6 +387,13 @@ export const STEER_RETURN = 4.5;        // rad/s, self-centring when released
 // tightest corner needs, with margin left for correction.
 export const STEER_SPEED_FALLOFF = 0.075;   // s/m
 
+// Normal-driving assists: reserve rear grip under power, never add tyre force.
+// Explicit drift retains its own steering and traction trade-off.
+export const STEER_GRIP_TARGET = 0.90;
+export const STEER_SLIP_ALLOWANCE = 0.025; // rad, tyre slip above geometric steer
+export const CORNER_POWER_RESERVE = 0.995; // maximum lateral budget reserved
+export const KART_RESTITUTION = 0.08;     // soft contact, rather than billiards
+
 // STALL RECOVERY (AI). A kart pressed nose-first into a barrier cannot drive
 // forward out of it: the barrier removes the outward velocity component every
 // step, and forward IS outward when the heading error is past 90 deg. A human

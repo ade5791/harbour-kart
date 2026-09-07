@@ -109,12 +109,17 @@ export class InputSystem {
       const t = this.touch, r = el.getBoundingClientRect();
       t.steerX0 = r.width * 0.5;
       t.steerX = e.clientX - r.left;
-      let d = t.steerX - t.steerX0;
-      d = Math.sign(d) * Math.max(0, Math.abs(d) - TOUCH_DEADZONE);
-      const radius = Math.max(1, Math.min(TOUCH_PAD_RADIUS, r.width * 0.5 - TOUCH_DEADZONE));
-      t.steerVal = Math.max(-1, Math.min(1, d / radius));
+      const radius = Math.max(1, Math.min(TOUCH_PAD_RADIUS, r.width * 0.34));
+      const dx = t.steerX - t.steerX0;
+      const dy = e.clientY - r.top - r.height * 0.5;
+      const length = Math.hypot(dx, dy), scale = length > radius ? radius / length : 1;
+      const x = dx * scale, y = dy * scale;
+      const d = Math.sign(x) * Math.max(0, Math.abs(x) - TOUCH_DEADZONE);
+      t.steerVal = Math.max(-1, Math.min(1, d / Math.max(1, radius - TOUCH_DEADZONE)));
       el.dataset.direction = t.steerVal < 0 ? 'left' : t.steerVal > 0 ? 'right' : 'center';
       el.style.setProperty('--steer', String(t.steerVal));
+      el.style.setProperty('--stick-x', x + 'px');
+      el.style.setProperty('--stick-y', y + 'px');
     };
     const down = (e) => {
       // Keep the original steering owner if another finger hits this zone.
@@ -172,6 +177,8 @@ export class InputSystem {
       if (kind === 'steer' && !held) {
         el.dataset.direction = 'center';
         el.style.setProperty('--steer', '0');
+        el.style.setProperty('--stick-x', '0px');
+        el.style.setProperty('--stick-y', '0px');
       }
       t.active = t.steerId >= 0 || t.throttleIds.size > 0 ||
                  t.brakeIds.size > 0 || t.driftIds.size > 0;
@@ -226,6 +233,8 @@ export class InputSystem {
       if (zone.kind === 'steer') {
         zone.el.dataset.direction = 'center';
         zone.el.style.setProperty('--steer', '0');
+        zone.el.style.setProperty('--stick-x', '0px');
+        zone.el.style.setProperty('--stick-y', '0px');
       }
     }
   }

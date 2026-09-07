@@ -148,6 +148,65 @@ export class HUD {
     window.addEventListener('resize', this._onResize);
   }
 
+  initMap(course, karts) {
+    this.map = document.createElement('canvas');
+    this.map.className = 'hk-minimap';
+    this.map.setAttribute('data-testid', 'minimap');
+    this.map.setAttribute('role', 'img');
+    this.map.setAttribute('aria-label', 'Circuit map: gold is you, blue dots are rivals, white is start');
+    this.map.width = 308; this.map.height = 264;
+    this.root.appendChild(this.map);
+    this._mapCtx = this.map.getContext('2d');
+    this._mapKarts = karts;
+    const pts = [], p = {};
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < 512; i++) {
+      course.sampleInto(i / 512 * course.length, p);
+      pts.push([p.x, p.z]);
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+      minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+    }
+    this._mapScale = Math.min(268 / (maxX - minX), 210 / (maxZ - minZ));
+    this._mapOX = 154 - (minX + maxX) * 0.5 * this._mapScale;
+    this._mapOZ = 142 - (minZ + maxZ) * 0.5 * this._mapScale;
+    this._mapPath = new Path2D();
+    for (let i = 0; i < pts.length; i++) {
+      const x = this._mapOX + pts[i][0] * this._mapScale;
+      const y = this._mapOZ + pts[i][1] * this._mapScale;
+      if (i === 0) { this._mapPath.moveTo(x,y); this._mapStartX = x; this._mapStartY = y; }
+      else this._mapPath.lineTo(x,y);
+    }
+    this._mapPath.closePath();
+    this._mapTick = -1;
+    this.updateMap(0);
+  }
+
+  updateMap(elapsed) {
+    if (!this._mapCtx) return;
+    const tick = Math.floor(elapsed * 15);
+    if (tick === this._mapTick) return;
+    this._mapTick = tick;
+    const c = this._mapCtx;
+    c.clearRect(0,0,308,264);
+    c.fillStyle = '#ffe4b5'; c.font = 'bold 18px sans-serif';
+    c.fillText('CIRCUIT', 16, 25);
+    c.lineJoin = 'round'; c.lineWidth = 13; c.strokeStyle = '#060f17'; c.stroke(this._mapPath);
+    c.lineWidth = 6; c.strokeStyle = '#c5d3ce'; c.stroke(this._mapPath);
+    c.fillStyle = '#fff'; c.fillRect(this._mapStartX-5,this._mapStartY-5,10,10);
+    for (let i = this._mapKarts.length - 1; i >= 0; i--) {
+      const v = this._mapKarts[i].veh;
+      const x = this._mapOX + v.x * this._mapScale, y = this._mapOZ + v.z * this._mapScale;
+      c.beginPath(); c.arc(x,y,i === 0 ? 8 : 5,0,Math.PI*2);
+      c.fillStyle = i === 0 ? '#ffc35f' : '#60c9eb'; c.fill();
+      c.strokeStyle = '#10212b'; c.lineWidth = 2; c.stroke();
+      if (i === 0) {
+        c.beginPath(); c.moveTo(x,y);
+        c.lineTo(x-Math.sin(v.yaw)*17,y-Math.cos(v.yaw)*17);
+        c.strokeStyle = '#ffc35f'; c.lineWidth = 4; c.stroke();
+      }
+    }
+  }
+
   _resize() {
     const h = this.container.clientHeight || 1;
     // MEASURED glyph height, applied as a real pixel size.
@@ -163,6 +222,7 @@ export class HUD {
   // DOM write - a per-frame textContent assignment on four nodes is a measurable
   // layout cost at 60 Hz.
   update(position, fieldSize, lap, lapCount, elapsedS, speedKmh, waypointNorm) {
+    this.updateMap(elapsedS);
     if (position !== this._lastPos) {
       this.el.position.textContent = position + '/' + fieldSize;
       this._lastPos = position;
@@ -209,6 +269,7 @@ export class HUD {
   }
 
   dispose() {
+    this._mapKarts = null; this._mapPath = null; this._mapCtx = null; this.map = null;
     window.removeEventListener('resize', this._onResize);
     if (this.root.parentNode) this.root.parentNode.removeChild(this.root);
     this.el = Object.create(null);
