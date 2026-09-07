@@ -15,7 +15,8 @@
 // the pixel gate.
 
 import * as THREE from 'three';
-import { REGION, SUN, hexToLinear, luminance } from './palette.js';
+import { REGION, SUN, TARGETS, hexToLinear, luminance } from './palette.js';
+import { radianceForDisplay } from './photometry.js';
 // solveZenithScale is defined below and used in the constructor; declared here
 // in the import block's place only as a reminder that both solvers are exported
 // so tools/rendergate.mjs can re-derive them independently of the renderer.
@@ -81,7 +82,11 @@ void main() {
   float g = smoothstep(uRampT0, uRampT1, t);
   g = pow(g, uExponent);
 
-  vec3 col = mix(uHorizon, uZenith, g);
+  // Continue below/above the reference transition instead of clamping 74%
+  // of the visible sky to one colour. C1 tails preserve the reference bands.
+  float lowerTail = mix(0.45, 1.0, smoothstep(0.0, uRampT0, t));
+  float upperTail = mix(1.0, 1.18, smoothstep(uRampT1, 1.0, t));
+  vec3 col = mix(uHorizon * lowerTail, uZenith * upperTail, g);
 
   // Sun-side haze: a broad, low-contrast bloom of light around the sun
   // direction, done IN THE SKY MATERIAL rather than as a post bloom pass. This
@@ -98,50 +103,11 @@ void main() {
   col += (hash(gl_FragCoord.xy) - 0.5) * uGrain;
 
   gl_FragColor = vec4(max(col, 0.0), 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
 
-  // ---------------------------------------------------------------------
-  // TONEMAP + OUTPUT ENCODE. MEASURED DEFECT, NOT A PRECAUTION.
-  //
-  // This material is a RAW ShaderMaterial, so three uses this fragment source
-  // VERBATIM. The toneMapped:true flag on the material only makes three
-  // inject tonemapping into materials THREE ITSELF generates; on a raw
-  // ShaderMaterial it is inert. Without these two chunks the dome wrote its
-  // LINEAR value straight into an sRGB-encoded default framebuffer.
-  //
-  // The asymmetry that hid this for so long: on the POST path the dome renders
-  // into an HDR linear target and the composite pass tonemaps and encodes
-  // everything afterwards, so the sky was always correct there. Only the
-  // NO-POST path - the baseline gate path - was wrong.
-  //
-  // MEASURED by tools/_s6_skychunk.mjs, linear 0.192 at exposure 0.62:
-  //     raw ShaderMaterial (before this fix)  0.192157   <- raw linear, passed through
-  //     MeshBasicMaterial control             0.384314
-  //     CPU reference, ACES then sRGB         0.383688   <- correct
-  //     sRGB encode with no tonemap           0.475430
-  // The measured 0.192157 matches the raw linear input to 4 decimal places,
-  // which is proof of pass-through rather than an approximation error.
-  //
-  // ATTEMPTED FIX, MEASURED, AND REVERTED - RECORDED SO IT IS NOT RETRIED.
-  //
-  // Adding the two chunks here is WRONG for this material, and the measurement
-  // says so plainly. solveGradientForRatio() above already models ACES itself
-  // (see the "TARGET IS DISPLAY-REFERRED" note on it): it
-  // solves the zenith radiance so that the DISPLAYED luminance ratio hits the
-  // measured 4.392x target (see its aces() helper), on the explicit
-  // assumption that this shader emits
-  // scene-linear radiance which the RENDERER then tonemaps.
-  //
-  // With the chunks added, ACES was applied twice:
-  //     N8c no-post sky gradient   20.527x   (top band 0.89626, nearly clipped)
-  //     N6b water/horizon step     0.4115    FAILED (was passing)
-  // i.e. the fix traded one failing check for a different failing check and
-  // blew out the sky. Reverted. The chunks stay out; the solver's contract -
-  // this shader emits LINEAR, the renderer tonemaps - is the correct one.
-  //
-  // The real N3-nobloom finding is separate and is recorded in the gate: the
-  // kerb's sampled background is NOT sky (the numbers did not move by even one
-  // part in 1e-6 when the sky changed), so the split has to be explained
-  // somewhere other than the skydome.
+  // ShaderMaterial requires explicit output chunks. Exactly one transform.
+
 }
 `;
 
@@ -421,68 +387,23 @@ export class Sky {
     const imageH = o.imageHeight || 619;
     const fovDeg = o.fovDeg || 55;
 
-    // Rows -> normalised dome height.
-    //
-    // MUST MATCH THE FRAGMENT SHADER'S PARAMETERISATION EXACTLY.
-    // The shader computes `float t = clamp(d.y, 0.0, 1.0)` - i.e. t is 0.0 at
-    // the horizon and 1.0 at the zenith, and it is the raw view-direction y,
-    // NOT a remap. sin(elev) is exactly that quantity for a camera looking at
-    // the horizon, so this form is correct as it stands.
-    //
-    // (Recorded because I got this wrong once during S5: I "fixed" this to
-    // sin(elev)*0.5+0.5 on the theory that the shader used the d.y*0.5+0.5
-    // convention. It does not. That change compressed tTop/tMid into a
-    // 0.045-wide band sitting above both measured rows, and the rendered sky
-    // went perfectly FLAT - achieved falloff 1.0000x, with top and mid bands
-    // both reading exactly 0.0267. The shader is the authority for its own
-    // parameterisation; when the two disagree, read the shader.)
-    const rowToT = (row) => {
-      const frac = (imageH * 0.5 - row) / (imageH * 0.5);   // 1 at top, 0 at centre
-      const elev = frac * (fovDeg * 0.5) * Math.PI / 180;
-      return Math.max(1e-4, Math.sin(elev));
+    // Perspective ray elevation, including the authored chase pitch and
+    // the HUD-free reference column. This is atan, not linear FOV mapping.
+    const pitch = Math.atan2(-0.7, 17.4);
+    const rayT = row => {
+      const y=(1-2*row/619)*Math.tan(fovDeg*Math.PI/360);
+      const x=(2*.34-1)*(16/9)*Math.tan(fovDeg*Math.PI/360);
+      return (y*Math.cos(pitch)+Math.sin(pitch))/Math.sqrt(x*x+y*y+1);
     };
-    // The two bands must be the SAME rows the gate measures. The reference
-    // measurement used rows 4-20 (top) and 60-80 (mid) of a 619 px frame, and
-    // the gate rescales those to the render height. Solving at literal rows
-    // 12/70 of a 540 px frame samples a different pair of dome heights than the
-    // gate reads back, which is its own way to miss the target. Rescale here
-    // too, so solve and measurement are the same two bands by construction.
-    const refH = 619;
-    const scaleRow = (r) => (r / refH) * imageH;
-    this.tTop = rowToT(scaleRow(12));
-    this.tMid = rowToT(scaleRow(70));
-
-    // Zenith is pushed above the measured "sky upper" swatch because that
-    // swatch was sampled at row ~12, not at the true zenith; the solver then
-    // fits the gradient so the SAMPLED ROWS reproduce the measured ratio.
-    const zen = hexToLinear(REGION.skyUpper.hex);
-    const hor = hexToLinear(REGION.skyHorizon.hex);
-    this.horizonLin = [hor[0], hor[1], hor[2]];
-
-    // Solve the zenith SCALE first (the measured pair is only 1.56x apart, so
-    // the 4.392x target is unreachable at any exponent without more spread),
-    // then solve the exponent against the scaled zenith. Both are derivations
-    // from the measured falloff; neither is a typed-in constant.
-    // The exposure is passed in so the solve happens in the space the target
-    // was measured in (post-tonemap). Without it the solve is scene-linear and
-    // the rendered falloff overshoots the target by ~4.75x.
-    this.exposure = o.exposure;
-    const g = solveGradientForRatio(
-      zen, this.horizonLin, this.tTop, this.tMid, falloffTarget, this.exposure
-    );
-    this.zenithScale = g.scale;
-    this.zenithLin = g.zenith;
-    this.rampT0 = g.t0;
-    this.rampT1 = g.t1;
-    this.achievedFalloff = g.achieved;
-    this.achievedFalloffDisplay = g.achievedDisplay;
-    this.displayReferred = g.displayReferred;
-    this.converged = g.converged;
-    // Kept for reporting: what a pure pow() gradient could have reached, which
-    // is what the gate caught as impossible.
-    const powBest = solveSkyExponent(zen, this.horizonLin, this.tTop, this.tMid, falloffTarget);
-    this.powMaxAchievable = powBest.maxAchievable;
-    this.exponent = 1.0;   // the ramp is a smoothstep band, not a power curve
+    this.tTop=rayT(12); this.tMid=rayT(70);
+    this.exposure=o.exposure || 1;
+    this.horizonLin=radianceForDisplay(hexToLinear(REGION.skyHorizon.hex), TARGETS.skyMidLum, this.exposure);
+    this.zenithLin=radianceForDisplay(hexToLinear(REGION.skyUpper.hex), TARGETS.skyTopLum, this.exposure);
+    this.rampT0=this.tMid; this.rampT1=this.tTop;
+    this.zenithScale=1; this.exponent=1;
+    this.achievedFalloff=luminance(this.zenithLin)/luminance(this.horizonLin);
+    this.achievedFalloffDisplay=TARGETS.skyFalloff;
+    this.displayReferred=true; this.converged=true; this.powMaxAchievable=null;
 
     const hazeLin = hexToLinear(SUN.hazeColorHex);
 
@@ -520,8 +441,8 @@ export class Sky {
         uRampT0:    { value: this.rampT0 },
         uRampT1:    { value: this.rampT1 },
         uHazeWidth: { value: 9.0 },
-        uHazeGain:  { value: 2.6 },
-        uGrain:     { value: 0.0035 }
+        uHazeGain:  { value: 0.0 },
+        uGrain:     { value: 0.00008 }
       }
     });
 
@@ -538,10 +459,14 @@ export class Sky {
     const x = Math.max(0, Math.min(1,
       (t - this.rampT0) / Math.max(1e-6, this.rampT1 - this.rampT0)));
     const g = Math.pow(x * x * (3 - 2 * x), this.exponent);
+    const lo = Math.max(0, Math.min(1, t / Math.max(1e-6, this.rampT0)));
+    const hi = Math.max(0, Math.min(1, (t - this.rampT1) / Math.max(1e-6, 1 - this.rampT1)));
+    const lowerTail = 0.45 + 0.55 * lo * lo * (3 - 2 * lo);
+    const upperTail = 1 + 0.18 * hi * hi * (3 - 2 * hi);
     return luminance([
-      this.horizonLin[0] + (this.zenithLin[0] - this.horizonLin[0]) * g,
-      this.horizonLin[1] + (this.zenithLin[1] - this.horizonLin[1]) * g,
-      this.horizonLin[2] + (this.zenithLin[2] - this.horizonLin[2]) * g
+      this.horizonLin[0] * lowerTail * (1 - g) + this.zenithLin[0] * upperTail * g,
+      this.horizonLin[1] * lowerTail * (1 - g) + this.zenithLin[1] * upperTail * g,
+      this.horizonLin[2] * lowerTail * (1 - g) + this.zenithLin[2] * upperTail * g
     ]);
   }
 

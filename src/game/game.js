@@ -34,6 +34,7 @@ import { FixedLoop } from '../core/loop.js';
 import { EventBus } from '../core/bus.js';
 import { RenderSystem } from '../render/index.js';
 import { KartResources, buildField } from '../render/kart.js';
+import { loadCoachwork } from '../render/coachwork.js';
 import { ChaseCamera } from '../render/chasecam.js';
 import { DustPool, ImpactFeedback } from '../render/feedback.js';
 import { HUD, formatTime } from '../render/hud.js';
@@ -122,6 +123,7 @@ export class Game {
       post: R.post
     });
     await this.sys.init();
+    this.sys.harbour.reducedMotion = this.reduced;
     this._applySize();
 
     // renderer.info auto-resets per internal render() call; post issues six of
@@ -137,7 +139,16 @@ export class Game {
 
     // ---- FULL SCENE GRAPH BEFORE PREWARM ----
     this.kres = new KartResources(); this.kres.build();
+    // Load articulated geometry BEFORE prewarm; network failure keeps the fallback.
+    try {
+      await loadCoachwork(this.kres);
+      this.telemetry.coachwork = 'blender-v3';
+    } catch (err) {
+      this.telemetry.coachwork = 'procedural-fallback';
+      this.telemetry.coachworkError = String(err.message || err);
+    }
     this.field = buildField(this.kres, this.rngHub, this.race.fieldSize);
+    for (const k of this.field) k.reducedMotion = this.reduced;
     for (const k of this.field) this.sys.scene.add(k.root);
     this.chase = new ChaseCamera(this.sys.camera);
     const particles = Math.min(96, this.sys.preset.maxParticles);
@@ -728,5 +739,8 @@ export class Game {
     if (this.loop) this.loop.dispose();
     if (this.sys) this.sys.dispose();
     if (this.canvas && this.canvas.parentNode) this.canvas.parentNode.removeChild(this.canvas);
+    if (this.ui) this.ui.dispose();
+    this.ui = null;
+    if (this._onDispose) { this._onDispose(); this._onDispose = null; }
   }
 }

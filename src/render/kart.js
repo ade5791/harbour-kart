@@ -36,6 +36,7 @@
 // per LIVERY, created once. Six karts do not create six copies of a tyre.
 
 import * as THREE from 'three';
+import { attachCoachwork, disposeCoachwork } from './coachwork.js';
 import {
   W, L, WB,
   TYRE_W_FRONT, TYRE_W_REAR, TYRE_R_FRONT, TYRE_R_REAR,
@@ -177,6 +178,7 @@ export class KartResources {
   }
 
   dispose() {
+    disposeCoachwork(this);
     for (const k in this.geo) this.geo[k].dispose();
     for (const k in this.mat) this.mat[k].dispose();
     if (this.liveryMats) {
@@ -428,6 +430,14 @@ export class Kart {
     this.shakeX = 0; this.shakeY = 0;
     this._shakeMag = 0; this._shakeT = 0;
     this._t = 0;
+    this._bodyRoll = 0; this._bodyPitch = 0; this._lastSpeed = 0;
+    this.reducedMotion = false;
+    // Wheels are unsprung: chassis reactions must not lift the tyres off the road.
+    for (const w of this.wheels) {
+      const node = w.front ? w.node.parent : w.node;
+      this.root.attach(node);
+    }
+    attachCoachwork(this);
   }
 
   // ---------------------------------------------------------------------------
@@ -478,7 +488,7 @@ export class Kart {
     }
 
     // Flag flutter, scaled by speed. Deterministic phase from the seeded stream.
-    const flutter = Math.min(1, groundSpeed / 20) * 0.34;
+    const flutter = this.reducedMotion ? 0 : Math.min(1, groundSpeed / 20) * 0.34;
     this._pennant.rotation.z = Math.sin(this._t * 13.0 + this._flagPhase) * flutter;
 
     // PLACEMENT on root: where the kart is on the boardwalk, and which way it
@@ -490,8 +500,17 @@ export class Kart {
     // BODY MOTION on body: the impact throw and roll. Everything the player
     // reads as the kart's mass reacting lives on this node, and nothing that
     // touches the ground does.
-    this.body.position.y = this.shakeY;
-    this.body.rotation.set(this.shakeX * 0.5, 0, this.shakeX);
+    // Cosmetic load transfer only. No physics state is changed by these springs.
+    const gain = 1 - Math.exp(-10 * dt);
+    const accel = dt > 0 ? (groundSpeed - this._lastSpeed) / dt : 0;
+    this._lastSpeed = groundSpeed;
+    const targetRoll = this.reducedMotion ? 0 : Math.max(-0.055, Math.min(0.055, -steerAngle * groundSpeed * groundSpeed * 0.0008));
+    const targetPitch = this.reducedMotion ? 0 : Math.max(-0.035, Math.min(0.035, accel * 0.003));
+    this._bodyRoll += (targetRoll - this._bodyRoll) * gain;
+    this._bodyPitch += (targetPitch - this._bodyPitch) * gain;
+    const shake = this.reducedMotion ? 0 : 1;
+    this.body.position.y = this.shakeY * shake;
+    this.body.rotation.set(this._bodyPitch + this.shakeX * 0.5 * shake, 0, this._bodyRoll + this.shakeX * shake);
     return this;
   }
 

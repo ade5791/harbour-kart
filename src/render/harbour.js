@@ -41,6 +41,7 @@
 // intact - which the gate checks by measuring the mean, not by trusting it.
 
 import * as THREE from 'three';
+import { HarbourBoats, WATER_Y } from './boats.js';
 import { REGION, SUN, hexToLinear } from './palette.js';
 import {
   HALF_W, KERB_W, KERB_H, CLEAR_RADIUS, WATER_OFFSET, POST_H
@@ -98,6 +99,7 @@ export class Harbour {
     this._buildRopes();
     this._buildCrates();
     this._buildBuildings();
+    this._buildQuays();
     this._buildPalms();
     this._buildWater();
     this._buildCastle();
@@ -299,11 +301,11 @@ export class Harbour {
       // defect, so the CONTENT is what changes here; the 2.5x threshold is a
       // gameplay requirement and was NOT touched.
       //
-      // 1.45/0.55 = 2.636x authored, which clears 2.5x with margin for the
-      // lighting to eat. Mean is still exactly (1.45 + 0.55) / 2 = 1.0, so the
-      // measured mean albedo of the kerb is unchanged - this widens the SPREAD
-      // without lifting the blacks, which the brief forbids.
-      const tone = k.stripe ? 1.45 : 0.55;
+      // Ray-attributed apex/deck contrast measured 2.415x at 1.45/0.55.
+      // Increase stripe separation, preserving the authored pair mean of 1.
+      // Rendered contrast remains independently gated at 2.5x; an albedo
+      // ratio alone does not establish readability under lighting and fog.
+      const tone = k.stripe ? 1.59 : 0.41;
       toneSum += tone;
       _col.setRGB(tone, tone * 0.985, tone * 0.95, THREE.LinearSRGBColorSpace);
       mesh.setColorAt(i, _col);
@@ -647,6 +649,46 @@ export class Harbour {
     this.stats.buildings = list.length;
   }
 
+  // Positive d is chase-left. Support the authored building/palm footprints
+  // without changing their positions or filling the open harbour with land.
+  _buildQuays() {
+    const geos = [];
+    const bottom = WATER_Y - 1.25;
+    this.quayPads = [];
+    const pad = (x, z, w, depth, yaw, tone, kind) => {
+      const geo = new THREE.BoxGeometry(w, DECK_Y - bottom, depth);
+      geo.translate(0, (DECK_Y + bottom) * 0.5, 0);
+      geo.rotateY(yaw);
+      geo.translate(x, 0, z);
+      const p = geo.attributes.position, n = geo.attributes.normal;
+      const uv = geo.attributes.uv;
+      for (let i = 0; i < p.count; i++) {
+        const top = Math.abs(n.getY(i)) > 0.5;
+        uv.setXY(i, (top || Math.abs(n.getZ(i)) > 0.5 ? p.getX(i) : p.getZ(i)) * 0.2,
+          (top ? p.getZ(i) : p.getY(i)) * 0.2);
+      }
+      geo.setAttribute('uv1', uv.clone());
+      this._paint(geo, tone);
+      geos.push(geo);
+      this.quayPads.push({x, z, w, depth, yaw, kind, top:DECK_Y, bottom});
+    };
+    for (const b of this.track.buildings) {
+      pad(b.x, b.z, b.w + 2.8, b.depth + 2.8, b.yaw, b.tone * 0.82, 'building');
+    }
+    for (const p of this.track.palms) {
+      pad(p.x, p.z, 2.4, 2.4, 0, 0.82, 'palm');
+    }
+    const c = this.track.castle;
+    pad(c.x, c.z, c.w * 1.65, c.w * 1.65, 0, 0.72, 'castle');
+    const geo = this._own(mergeGeometries(geos));
+    for (const g of geos) g.dispose();
+    const mat = this._own(this.mats.get('stone').clone());
+    mat.name = 'quay-stone';
+    mat.vertexColors = true;
+    this.quayMesh = this._track(geo, 'quay-foundations', mat, true, true);
+    this.stats.quayPads = this.quayPads.length;
+  }
+
   _buildPalms() {
     const t = this.track;
     const list = t.palms;
@@ -691,36 +733,32 @@ export class Harbour {
 
   // ---------------------------------------------------------------------------
   // WATER. See docs/S5_RENDER.md for the technique decision and its rationale.
-  // The surface is a single ribbon following the outboard edge, extended far
-  // out to the horizon, shaded by a scrolling normal perturbation driven by the
+  // The surface is a continuous world-space basin beneath the deck and quays,
+  // extending both sides, shaded by a scrolling normal perturbation driven by the
   // ENGINE CLOCK. No planar reflection, no render-to-texture.
   // ---------------------------------------------------------------------------
   _buildWater() {
     const t = this.track;
-    const spans = t.waterSpans;
-    const n = spans.length;
-    const OUT = 260;           // metres out to the horizon
-    const verts = new Float32Array(n * 2 * 3);
-    const norms = new Float32Array(n * 2 * 3);
-    const uvs = new Float32Array(n * 2 * 2);
-    const idx = [];
-    let vi = 0, ui = 0;
-    for (let i = 0; i < n; i++) {
-      const w = spans[i];
-      t.offsetPoint(w.s, -WATER_OFFSET, _pt);
-      t.offsetPoint(w.s, -(WATER_OFFSET + OUT), _pt2);
-      verts[vi] = _pt.x; verts[vi + 1] = -0.55; verts[vi + 2] = _pt.z;
-      norms[vi] = 0; norms[vi + 1] = 1; norms[vi + 2] = 0;
-      vi += 3; uvs[ui] = w.s * 0.08; uvs[ui + 1] = 0; ui += 2;
-      verts[vi] = _pt2.x; verts[vi + 1] = -0.55; verts[vi + 2] = _pt2.z;
-      norms[vi] = 0; norms[vi + 1] = 1; norms[vi + 2] = 0;
-      vi += 3; uvs[ui] = w.s * 0.08; uvs[ui + 1] = 12; ui += 2;
+    // One convex world-space basin: no offset-curve folds, no detached edge,
+    // and no coplanar water duplicates. Land/deck depth-occlude this surface.
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let s = 0; s < t.length; s += 2) {
+      t.offsetPoint(s, 0, _pt);
+      minX = Math.min(minX, _pt.x); maxX = Math.max(maxX, _pt.x);
+      minZ = Math.min(minZ, _pt.z); maxZ = Math.max(maxZ, _pt.z);
     }
-    for (let i = 0; i < n; i++) {
-      const a = i * 2, b = ((i + 1) % n) * 2;
-      idx.push(a, b, a + 1);
-      idx.push(a + 1, b, b + 1);
-    }
+    const margin = 600;
+    minX -= margin; maxX += margin; minZ -= margin; maxZ += margin;
+    const verts = new Float32Array([
+      minX, WATER_Y, minZ, minX, WATER_Y, maxZ,
+      maxX, WATER_Y, maxZ, maxX, WATER_Y, minZ
+    ]);
+    const norms = new Float32Array([0,1,0, 0,1,0, 0,1,0, 0,1,0]);
+    const uvs = new Float32Array([
+      minX*0.08, minZ*0.08, minX*0.08, maxZ*0.08,
+      maxX*0.08, maxZ*0.08, maxX*0.08, minZ*0.08
+    ]);
+    const idx = [0,1,2, 0,2,3];
     const g = this._own(new THREE.BufferGeometry());
     g.setAttribute('position', new THREE.BufferAttribute(verts, 3));
     g.setAttribute('normal', new THREE.BufferAttribute(norms, 3));
@@ -730,16 +768,50 @@ export class Harbour {
     g.computeBoundingSphere();
 
     const mat = this.mats.get('lagoon');
+    // Sea haze is scene-linear and applied BEFORE tonemapping/encoding.
+    // Three's stock fog runs after encoding on canvas but before the external
+    // composite on HDR targets. Scaling that output-space fog breaks parity.
+    // A dedicated linear horizon radiance keeps both paths on the same curve,
+    // without changing near water, land fog, kerbs or global lighting.
+    const waterCompile = mat.onBeforeCompile;
+    mat.onBeforeCompile = function(shader, renderer) {
+      waterCompile.call(this, shader, renderer);
+      shader.uniforms.basinHazeColor = { value: new THREE.Color().setRGB(0.004, 0.006, 0.005) };
+      const haze = THREE.ShaderChunk.fog_fragment.replace('fogColor, fogFactor', 'basinHazeColor, fogFactor');
+      shader.fragmentShader = 'uniform vec3 basinHazeColor;\n' + shader.fragmentShader
+        .replace('#include <fog_fragment>', '')
+        .replace('#include <tonemapping_fragment>', haze + '\n#include <tonemapping_fragment>');
+    };
+    mat.customProgramCacheKey = () => 'harbour-basin-linear-haze-v2';
+    mat.needsUpdate = true;
     // Scroll the normal map with the engine clock. onBeforeRender is NOT used
     // - the render system calls syncWater(t) explicitly so the time source is
     // unambiguous and the pixel gate is reproducible.
     this.waterMat = mat;
     this.waterMesh = this._track(g, 'lagoon', mat, false, true);
-    this.stats.waterSpans = n;
+    this.stats.waterSpans = t.waterSpans.length;
+    this.stats.basinTriangles = 2;
+  }
+
+  async loadBoats() {
+    this.boats = new HarbourBoats(this.track);
+    this.group.add(this.boats.group);
+    try {
+      await this.boats.load();
+      this.stats.boats = this.boats.items.length;
+    } catch (error) {
+      this.boats.dispose();
+      this.boats.status = 'failed';
+      this.boatError = String(error.message || error);
+      console.warn('Harbour boat unavailable: ' + this.boatError);
+    }
   }
 
   /** Engine-clock water animation. Allocates nothing. */
   syncWater(timeS) {
+    const reduced = !!this.reducedMotion;
+    if (this.boats) this.boats.sync(timeS, reduced);
+    if (reduced) timeS = 0;
     const m = this.waterMat;
     if (!m || !m.normalMap) return;
     m.normalMap.offset.set((timeS * 0.013) % 1, (timeS * 0.021) % 1);
@@ -806,6 +878,7 @@ export class Harbour {
   }
 
   dispose() {
+    if (this.boats) this.boats.dispose();
     for (const o of this._owned) { if (o && o.dispose) o.dispose(); }
     this._owned.length = 0;
     this.group.traverse((o) => {

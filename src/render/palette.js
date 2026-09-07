@@ -58,7 +58,9 @@ export const REGION = Object.freeze({
   palmCanopy:    swatch('#6b5e44', 'ref lum 0.1161'),
   boardwalkMid:  swatch('#39291f', 'ref lum 0.0258'),
   boardwalkFore: swatch('#28211d', 'ref lum 0.0164'),
-  stoneKerb:     swatch('#42635b', 'ref lum 0.1088'),
+  // Authored lift for the now-visible lagoon backdrop; reference anchor was
+  // #42635b. Preserve stripe separation and gate the rendered no-post result.
+  stoneKerb:     swatch('#4a6f66', 'authored water-readability repair; not a reference measurement'),
   bollard:       swatch('#314a41', 'ref lum 0.0588'),
   rope:          swatch('#372c24', 'ref lum 0.0276')
 });

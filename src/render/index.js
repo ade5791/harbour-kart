@@ -45,6 +45,7 @@ import { Harbour } from './harbour.js';
 import { SunCascades } from './shadows.js';
 import { PostChain } from './post.js';
 import { Prewarm } from './prewarm.js';
+import { unitLuminance, displayRGB, photometricLum } from './photometry.js';
 
 // EXPOSURE. The measured frame is LOW KEY: median luminance 0.0296, p95 0.3650,
 // max 1.0. That distribution is held with exposure and tonemapping, NEVER by
@@ -74,7 +75,7 @@ export function solveExposure() {
   const keyOnDeck = solved.keyIntensity * NdotL_deck;
   // Hemisphere fill reaches an up-facing surface at close to full sky value.
   const fillOnDeck = solved.fillIntensity;
-  const irradiance = keyOnDeck + fillOnDeck;
+  const irradiance = (keyOnDeck + fillOnDeck) / Math.PI;
 
   // Scene-linear radiance leaving the mid boardwalk.
   const albedo = REGION.boardwalkMid.lum;                // 0.0258
@@ -180,6 +181,7 @@ export class RenderSystem {
     this._buildLights();
     this._buildSky();
     this._buildHarbour();
+    await this.harbour.loadBoats();
     this._buildPost();
     return this;
   }
@@ -262,8 +264,8 @@ export class RenderSystem {
   // material in the harbour.
   // ---------------------------------------------------------------------------
   _buildLights() {
-    const key = hexToLinear(SUN.keyColorHex);
-    const fill = hexToLinear(SUN.fillColorHex);
+    const key = unitLuminance(hexToLinear(SUN.keyColorHex));
+    const fill = unitLuminance(hexToLinear(SUN.fillColorHex));
     const rim = hexToLinear(SUN.rimColorHex);
 
     // Sun direction from the measured elevation/azimuth. Low golden sun at
@@ -345,8 +347,9 @@ export class RenderSystem {
     // scanlines this camera never evaluates.
     this.sky = new Sky({
       falloffTarget: TARGETS.skyFalloff,
-      imageHeight: this.height,
-      fovDeg: this.camera.fov
+      imageHeight: this.height || 540,
+      fovDeg: this.camera.fov,
+      exposure: this.exposure
     });
     this.scene.add(this.sky.mesh);
   }
@@ -374,6 +377,24 @@ export class RenderSystem {
   }
 
   async warm() {
+    // Three r180 does not dispose its shared shadow depth material. Capture
+    // the actual material via the public shadow hook, without altering draws.
+    // Source-material disposal handles cloned variants; final disposal of this
+    // set also releases the shared depth material and all of its program keys.
+    if (!this._shadowMaterials) {
+      this._shadowMaterials = new Set();
+      this._shadowHooks = [];
+      const owned = this._shadowMaterials;
+      this.scene.traverse(o => {
+        if (!o.isMesh || !o.castShadow) return;
+        const previous = o.onBeforeShadow;
+        o.onBeforeShadow = function(r, object, camera, shadowCamera, geometry, material, group) {
+          owned.add(material);
+          previous.call(this, r, object, camera, shadowCamera, geometry, material, group);
+        };
+        this._shadowHooks.push([o, previous]);
+      });
+    }
     return this.prewarm.run({
       scene: this.scene,
       camera: this.camera,
@@ -463,6 +484,12 @@ export class RenderSystem {
   }
 
   dispose() {
+    if (this._disposed) return;
+    this._disposed = true;
+    for (const [o, previous] of this._shadowHooks || []) o.onBeforeShadow = previous;
+    if (this._shadowHooks) this._shadowHooks.length = 0;
+    for (const material of this._shadowMaterials || []) material.dispose();
+    if (this._shadowMaterials) this._shadowMaterials.clear();
     this.post.dispose();
     this.prewarm.dispose();
     this.harbour.dispose();

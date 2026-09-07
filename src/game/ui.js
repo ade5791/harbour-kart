@@ -56,6 +56,7 @@ export class UI {
       '<div class="hk-btns">' +
       '<button class="hk-btn hk-primary" data-testid="btn-race">RACE</button>' +
       '<button class="hk-btn" data-testid="btn-settings">SETTINGS</button>' +
+      '<a class="hk-btn" data-testid="link-credits" href="./credits.html" target="_blank" rel="noopener">CREDITS</a>' +
       '</div>' +
       '<div class="hk-help" data-testid="menu-help">' +
       'Steer <b>A</b>/<b>D</b> or <b>&larr;</b>/<b>&rarr;</b> &middot; ' +
@@ -285,10 +286,16 @@ export class UI {
   }
 
   dispose() {
+    if (this._disposed) return;
+    this._disposed = true;
+    this.game = null;
     for (const n of [this.loading, this.menu, this.settings, this.pause, this.results,
                      this.countdown, this.banner, this.itemSlot, this.touch,
                      this.pauseBtn, this.badge]) {
-      if (n && n.parentNode) n.parentNode.removeChild(n);
+      if (!n) continue;
+      n.onclick = null;
+      for (const child of n.querySelectorAll('*')) child.onclick = null;
+      n.remove();
     }
   }
 }

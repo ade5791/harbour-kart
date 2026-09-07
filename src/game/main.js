@@ -16,6 +16,8 @@ import { Game } from './game.js';
 import { UI } from './ui.js';
 import { parseReview, GAME_STATE } from './states.js';
 
+// Scope boot references to a completed call, not the permanent ES module.
+async function boot() {
 const root = document.getElementById('hk-root');
 
 const review = parseReview(location.search);
@@ -26,7 +28,7 @@ if (!review.reduced && window.matchMedia &&
 }
 if (review.reduced) document.body.classList.add('reduced');
 
-const ui = new UI(root, review);
+let ui = new UI(root, review);
 
 window.__HK = {
   ready: false,
@@ -44,16 +46,26 @@ window.__HK = {
 };
 
 // Any uncaught error must be VISIBLE, not a black canvas.
-window.addEventListener('error', (e) => {
+const onError = (e) => {
   window.__HK.error = String(e.message || e);
   ui.setLoading(1, 'ERROR: ' + window.__HK.error);
-});
-
-(async () => {
+};
+window.addEventListener('error', onError);
   try {
     ui.setLoading(0.08, 'Generating harbour course...');
     const game = new Game({ root, review, ui });
     window.__HK.game = game;
+    game._onDispose = () => {
+      window.removeEventListener('error', onError);
+      // QA methods share this boot lexical environment; release its UI binding.
+      ui = null;
+      if (window.__HK?.game === game) {
+        window.__HK.game = null;
+        window.__HK.ui = null;
+        window.__HK.ready = false;
+        document.body.removeAttribute('data-ready');
+      }
+    };
     ui.bindButtons(game);
 
     ui.setLoading(0.25, 'Building scene graph...');
@@ -87,4 +99,5 @@ window.addEventListener('error', (e) => {
     document.body.setAttribute('data-ready', 'error');
     throw e;
   }
-})();
+}
+boot();
