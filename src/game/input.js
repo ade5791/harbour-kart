@@ -6,10 +6,10 @@
 //
 //  1. MULTI-TOUCH IS MANDATORY. "A racer that drops inputs when a second finger
 //     lands is unplayable on touch." Every touch zone therefore tracks its own
-//     pointerId set. Steering and throttle are independent pointer captures, so
-//     a thumb on the left pad and a thumb on the right pad are BOTH live. This
-//     is why the implementation uses Pointer Events with setPointerCapture and
-//     a per-zone Set, not a single `activePointer` variable.
+//     contact ID set. Native Touch Events own fingers independently per zone;
+//     Pointer Events with capture own mouse and pen. Only one stream owns each
+//     contact, so compatibility events cannot double-trigger or cancel a thumb.
+//     Steering and throttle remain independent, never one global activePointer.
 //
 //  2. ONE THUMB PER SIDE. Steering occupies the LEFT half, accelerate/brake the
 //     RIGHT half. Zones do not overlap: the split is a hard x boundary at 50%
@@ -83,6 +83,9 @@ export class InputSystem {
                              // brief calls out. Must stay 0.
     };
     this._livePointers = new Set();
+    // Native touch owns fingers; Pointer Events retain mouse/pen support.
+    // Do not depend on a compatibility pointer stream surviving gesture guards.
+    this._nativeTouch = 'ontouchstart' in window;
 
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -121,7 +124,13 @@ export class InputSystem {
       el.style.setProperty('--stick-x', x + 'px');
       el.style.setProperty('--stick-y', y + 'px');
     };
+    const owned = id => kind === 'steer' ? this.touch.steerId === id :
+      kind === 'throttle' ? this.touch.throttleIds.has(id) :
+      kind === 'brake' ? this.touch.brakeIds.has(id) : this.touch.driftIds.has(id);
     const down = (e) => {
+      if (this._disposed || (this._nativeTouch && e.pointerType === 'touch')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (owned(e.pointerId)) return;
       // Keep the original steering owner if another finger hits this zone.
       if (kind === 'steer' && this.touch.steerId >= 0) return;
       e.preventDefault();
@@ -131,7 +140,9 @@ export class InputSystem {
         this.stats.maxConcurrentPointers = this._livePointers.size;
       }
       this._markFirstInput();
-      try { el.setPointerCapture(e.pointerId); } catch (_) { /* not fatal */ }
+      if (e.pointerType !== 'native-touch') {
+        try { el.setPointerCapture(e.pointerId); } catch (_) { /* window fallback */ }
+      }
       const t = this.touch;
       t.active = true;
       if (kind === 'steer') {
@@ -144,6 +155,7 @@ export class InputSystem {
       el.classList.add('held');
     };
     const move = (e) => {
+      if (this._disposed || (this._nativeTouch && e.pointerType === 'touch')) return;
       const t = this.touch;
       if (kind === 'steer' && e.pointerId === t.steerId) {
         e.preventDefault();
@@ -151,6 +163,8 @@ export class InputSystem {
       }
     };
     const up = (e) => {
+      if (this._disposed || !owned(e.pointerId) ||
+          (this._nativeTouch && e.pointerType === 'touch')) return;
       this.stats.touchEvents++;
       // S9: this counter was declared and never incremented - a check that could
       // not fail. It exists to catch the real touch defect: a zone losing its
@@ -160,7 +174,8 @@ export class InputSystem {
       // must never count, or the counter would fire on every normal lift and be
       // just as useless in the opposite direction. Only pointercancel counts, and
       // only while a second pointer is still live.
-      if (e.type === 'pointercancel' && this._livePointers.size > 1) {
+      if ((e.type === 'pointercancel' || e.type === 'touchcancel' ||
+           e.type === 'lostpointercapture') && this._livePointers.size > 1) {
         this.stats.droppedWhileMulti++;
       }
       this._livePointers.delete(e.pointerId);
@@ -183,14 +198,38 @@ export class InputSystem {
       t.active = t.steerId >= 0 || t.throttleIds.size > 0 ||
                  t.brakeIds.size > 0 || t.driftIds.size > 0;
     };
-    el.addEventListener('pointerdown', down);
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
-    // NOTE: no 'pointerleave' handler. With setPointerCapture the pointer stays
-    // bound to the element, and a leave-driven release is exactly what makes a
-    // steering thumb drop out when it slides past the pad edge mid-corner.
-    this._zones.push({ el, down, move, up, kind });
+    const listeners = [];
+    const on = (target, type, fn) => {
+      target.addEventListener(type, fn, { passive: false });
+      listeners.push([target, type, fn]);
+    };
+    const native = handler => e => {
+      // Touch identifiers and pointer IDs are separate namespaces.
+      if (e.cancelable) e.preventDefault();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        handler({ pointerId: 1000000 + t.identifier, pointerType: 'native-touch',
+          clientX: t.clientX, clientY: t.clientY, type: e.type,
+          preventDefault: () => { if (e.cancelable) e.preventDefault(); } });
+      }
+    };
+    on(el, 'pointerdown', down);
+    on(el, 'pointermove', move);
+    on(el, 'pointerup', up);
+    on(el, 'pointercancel', up);
+    on(el, 'lostpointercapture', up);
+    // Release/move still reach the owner if capture was unavailable.
+    on(window, 'pointermove', e => { if (!el.contains(e.target)) move(e); });
+    on(window, 'pointerup', up);
+    on(window, 'pointercancel', up);
+    if (this._nativeTouch) {
+      on(el, 'touchstart', native(down));
+      on(el, 'touchmove', native(move));
+      on(el, 'touchend', native(up));
+      on(el, 'touchcancel', native(up));
+    }
+    // Never release on pointerleave: dragging beyond the pad remains valid.
+    this._zones.push({ el, kind, listeners });
     return this;
   }
 
@@ -279,15 +318,14 @@ export class InputSystem {
 
   dispose() {
     if (this._disposed) return;
+    this._onBlur();
     this._disposed = true;
     this.target.removeEventListener('keydown', this._onKeyDown);
     this.target.removeEventListener('keyup', this._onKeyUp);
     window.removeEventListener('blur', this._onBlur);
     for (const z of this._zones) {
-      z.el.removeEventListener('pointerdown', z.down);
-      z.el.removeEventListener('pointermove', z.move);
-      z.el.removeEventListener('pointerup', z.up);
-      z.el.removeEventListener('pointercancel', z.up);
+      for (const [target, type, fn] of z.listeners) target.removeEventListener(type, fn);
+      z.listeners.length = 0;
     }
     this._zones.length = 0;
     this._livePointers.clear();
