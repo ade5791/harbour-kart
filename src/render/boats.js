@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CLEAR_RADIUS } from '../sim/track.js';
+import { adaptHarbourModelMaterial } from './harbour-detail.js';
 
 export const WATER_Y = -0.55;
 export const BOAT_LENGTH = 9;
@@ -26,6 +27,7 @@ export class HarbourBoats {
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats) {
         this.owned.add(m);
+        adaptHarbourModelMaterial(m);
         for (const v of Object.values(m)) if (v && v.isTexture) this.owned.add(v);
       }
       o.castShadow = true;

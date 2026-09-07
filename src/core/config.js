@@ -389,8 +389,8 @@ export const STEER_SPEED_FALLOFF = 0.075;   // s/m
 
 // Normal-driving assists: reserve rear grip under power, never add tyre force.
 // Explicit drift retains its own steering and traction trade-off.
-export const STEER_GRIP_TARGET = 0.90;
-export const STEER_SLIP_ALLOWANCE = 0.025; // rad, tyre slip above geometric steer
+export const STEER_GRIP_TARGET = 0.82;
+export const STEER_SLIP_ALLOWANCE = 0.010; // rad, tyre slip above geometric steer
 export const CORNER_POWER_RESERVE = 0.995; // maximum lateral budget reserved
 export const KART_RESTITUTION = 0.08;     // soft contact, rather than billiards
 

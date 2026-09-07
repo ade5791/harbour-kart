@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CLEAR_RADIUS } from '../sim/track.js';
+import { weatherLandmarkGeometry, adaptHarbourModelMaterial } from './harbour-detail.js';
 
 export class HarbourLandmarks {
   constructor(track) {
@@ -32,6 +33,7 @@ export class HarbourLandmarks {
     });
     const geo=mergeGeometries(geos,false);for(const g of geos)g.dispose();
     if(!geo)throw Error('Lighthouse merge failed');
+    weatherLandmarkGeometry(geo);
     const mat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85,metalness:0,name:'lighthouse-baked-colours'});
     this.owned.add(geo);this.owned.add(mat);return new THREE.Mesh(geo,mat);
   }
@@ -58,7 +60,22 @@ export class HarbourLandmarks {
     }
     if(!placement)throw Error('No safe placement for '+kind+' at '+station);
     const root=new THREE.Group();root.name=kind+'-'+station;root.position.set(placement.x,baseY,placement.z);root.rotation.y=placement.heading;root.add(pivot);
-    root.traverse(o=>{if(o.isMesh){o.castShadow=false;o.receiveShadow=true;}});
+    // Lighthouse sits on a stepped stone footing instead of emerging from water.
+    // It remains within its already tested bounding radius and clearance.
+    if(kind==='lighthouse') {
+      const mat=new THREE.MeshStandardMaterial({color:0x807c6a,roughness:0.94});
+      this.owned.add(mat);
+      for(let i=0;i<3;i++) {
+        const r=radius*(0.94-i*0.12);
+        const g=new THREE.CylinderGeometry(r,r+0.08,0.28,12);
+        this.owned.add(g);const plinth=new THREE.Mesh(g,mat);
+        plinth.position.y=0.15+i*0.25;root.add(plinth);
+      }
+      pivot.position.y=0.72;
+    }
+    root.traverse(o=>{if(o.isMesh){o.castShadow=kind==='lighthouse';o.receiveShadow=true;
+      for(const m of (Array.isArray(o.material)?o.material:[o.material]))adaptHarbourModelMaterial(m);
+    }});
     root.userData={...placement,source:'Sketchfab'};this.group.add(root);this.items.push(placement);
   }
   async load() {
@@ -67,7 +84,17 @@ export class HarbourLandmarks {
       const {scene}=await new GLTFLoader().loadAsync(new URL('../../assets/'+file,import.meta.url).href);
       this.collect(scene);if(this.disposed){this.dispose();return;}
       if(kind==='lighthouse')this.place(this.mergeLighthouse(scene),kind,100,22,-.8);
-      else for(const station of [70,230,420,610,800,990])this.place(scene.clone(true),kind,station,3.2,-1.15);
+      else {
+        const seen=new Set();
+        scene.traverse(o=>{if(!o.isMesh)return;
+          if(!seen.has(o.geometry)){weatherLandmarkGeometry(o.geometry);seen.add(o.geometry);}
+          for(const m of (Array.isArray(o.material)?o.material:[o.material])) {
+            m.vertexColors=true;
+            if(m.isMeshStandardMaterial)m.roughness=Math.max(0.58,m.roughness);
+          }
+        });
+        for(const station of [70,230,420,610,800,990])this.place(scene.clone(true),kind,station,3.2,-1.15);
+      }
     }
     this.status='ready';
   }

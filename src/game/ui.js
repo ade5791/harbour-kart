@@ -19,6 +19,16 @@
 import { GAME_STATE } from './states.js';
 import { formatTime } from '../render/hud.js';
 
+// Authored SVG silhouettes, shared by the held slot and touch action.
+const ITEM_PATHS = {
+  boost: '<path d="M19 2 7 18h9l-3 12 13-18h-9z"/>',
+  shield: '<path d="m16 3 11 4v9c0 7-11 13-11 13S5 23 5 16V7z"/><path d="m10 15 4 4 8-9" fill="none" stroke="#172c33" stroke-width="3"/>',
+  shell: '<path d="M5 22v-7a11 11 0 0 1 22 0v7z"/><path d="m16 5-6 7 2 9h8l2-9zM3 23h26" fill="none" stroke="#172c33" stroke-width="2.5"/>',
+  oil: '<path d="M16 2S6 14 6 21a10 10 0 0 0 20 0C26 14 16 2 16 2z"/><path d="M11 20q-1 6 5 7" fill="none" stroke="#172c33" stroke-width="2.5"/>',
+};
+const itemIcon = name => '<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">' +
+  (ITEM_PATHS[name] || '<path d="M5 5h22v22H5z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m6 6 20 20M26 6 6 26" fill="none" stroke="currentColor" stroke-width="2"/>') + '</svg>';
+
 const el = (tag, cls, testid) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -89,7 +99,8 @@ export class UI {
 
     // ---- item slot ----
     this.itemSlot = el('div', 'hk-item empty', 'item-slot');
-    this.itemSlot.innerHTML = '<span data-testid="item-name">--</span>';
+    this.itemSlot.setAttribute('role', 'status');
+    this.itemSlot.setAttribute('aria-live', 'polite');
     R.appendChild(this.itemSlot);
 
     // ---- pause ----
@@ -123,8 +134,9 @@ export class UI {
     this.padBrake.innerHTML = '<span>BRAKE</span>';
     this.padDrift = el('div', 'hk-pad hk-drift', 'pad-drift');
     this.padDrift.innerHTML = '<span>DRIFT</span>';
-    this.padItem = el('div', 'hk-pad hk-itembtn', 'pad-item');
-    this.padItem.innerHTML = '<span>ITEM</span>';
+    this.padItem = el('button', 'hk-pad hk-itembtn', 'pad-item');
+    this.padItem.type = 'button';
+    this.setItem(null);
     this.touch.appendChild(this.padSteer);
     this.touch.appendChild(this.padThrottle);
     this.touch.appendChild(this.padBrake);
@@ -267,10 +279,18 @@ export class UI {
   }
 
   setItem(name) {
-    const n = this.itemSlot.querySelector('[data-testid="item-name"]');
-    n.textContent = name ? name.toUpperCase() : '--';
-    this.itemSlot.classList.toggle('empty', !name);
-    this.itemSlot.setAttribute('data-item', name || '');
+    const kind = Object.hasOwn(ITEM_PATHS, name) ? name : '';
+    if (this._itemKind === kind) return;
+    this._itemKind = kind;
+    const label = kind ? kind.toUpperCase() : 'COLLECT';
+    this.itemSlot.innerHTML = itemIcon(kind) + '<span data-testid="item-name">' + label +
+      '</span><small>' + (kind ? 'E / USE ITEM' : 'DRIVE INTO CRATES') + '</small>';
+    this.itemSlot.classList.toggle('empty', !kind);
+    this.itemSlot.setAttribute('data-item', kind);
+    this.padItem.innerHTML = itemIcon(kind) + '<span>' + (kind ? 'USE ' + label : 'NO ITEM') + '</span>';
+    this.padItem.disabled = !kind;
+    this.padItem.setAttribute('aria-label', kind ? 'Use ' + kind : 'No item: collect a crate');
+    this.padItem.setAttribute('data-item', kind);
   }
 
   tick(game, dt) {

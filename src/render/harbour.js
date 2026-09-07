@@ -43,6 +43,7 @@
 import * as THREE from 'three';
 import { HarbourBoats, WATER_Y } from './boats.js';
 import { HarbourLandmarks } from './landmarks.js';
+import { buildHarbourDetail } from './harbour-detail.js';
 import { REGION, SUN, hexToLinear } from './palette.js';
 import {
   HALF_W, KERB_W, KERB_H, CLEAR_RADIUS, WATER_OFFSET, POST_H
@@ -100,6 +101,7 @@ export class Harbour {
     this._buildRopes();
     this._buildCrates();
     this._buildBuildings();
+    buildHarbourDetail(this);
     this._buildQuays();
     this._buildPalms();
     this._buildWater();

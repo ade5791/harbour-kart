@@ -14,11 +14,13 @@
 
 import { Game } from './game.js';
 import { UI } from './ui.js';
+import { lockGameViewport } from './mobile-viewport.js';
 import { parseReview, GAME_STATE } from './states.js';
 
 // Scope boot references to a completed call, not the permanent ES module.
 async function boot() {
 const root = document.getElementById('hk-root');
+const unlockViewport = lockGameViewport(root);
 
 const review = parseReview(location.search);
 // OS-level reduced motion is honoured unless the URL forces it on.
@@ -56,6 +58,7 @@ window.addEventListener('error', onError);
     const game = new Game({ root, review, ui });
     window.__HK.game = game;
     game._onDispose = () => {
+      unlockViewport();
       window.removeEventListener('error', onError);
       // QA methods share this boot lexical environment; release its UI binding.
       ui = null;

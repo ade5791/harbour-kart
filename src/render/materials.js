@@ -191,6 +191,8 @@ export class MaterialLibrary {
       // Compensate the /2 packing: color * (map*2) == (color*2) * map.
       mat.color.multiplyScalar(2.0);
       mat.normalScale.set(1.0, 1.0);
+      // Strong deck normals alias at grazing chase-camera angles on phones.
+      if(r.id==='boardwalk'||r.id==='boardwalkFore')mat.normalScale.set(0.22,0.22);
 
       this.materials[r.id] = mat;
 

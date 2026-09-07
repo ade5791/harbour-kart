@@ -397,8 +397,10 @@ export class Sky {
     };
     this.tTop=rayT(12); this.tMid=rayT(70);
     this.exposure=o.exposure || 1;
-    this.horizonLin=radianceForDisplay(hexToLinear(REGION.skyHorizon.hex), TARGETS.skyMidLum, this.exposure);
-    this.zenithLin=radianceForDisplay(hexToLinear(REGION.skyUpper.hex), TARGETS.skyTopLum, this.exposure);
+    // Harbour daylight: a warm sea horizon and cool upper sky, not the old
+    // low-key reference bands. Keep the same exposure-aware HDR transform.
+    this.horizonLin=radianceForDisplay(hexToLinear('#c7dfd5'), 0.42, this.exposure);
+    this.zenithLin=radianceForDisplay(hexToLinear('#609eb9'), 0.24, this.exposure);
     this.rampT0=this.tMid; this.rampT1=this.tTop;
     this.zenithScale=1; this.exponent=1;
     this.achievedFalloff=luminance(this.zenithLin)/luminance(this.horizonLin);

@@ -21,7 +21,11 @@ html,body{margin:0;height:100%;background:#0c0b08;overflow:hidden;
   font-family:"Trebuchet MS",Verdana,system-ui,sans-serif;color:var(--sand);
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
   touch-action:none;overscroll-behavior:none}
-#hk-root{position:fixed;inset:0;overflow:hidden}
+html{width:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{position:fixed;inset:0;width:100%;-webkit-touch-callout:none}
+#hk-root{position:fixed;inset:0;overflow:hidden;touch-action:none;height:100dvh}
+#hk-root button,#hk-root canvas,.hk-touch,.hk-touch *{touch-action:none;-webkit-touch-callout:none}
+#hk-root select,#hk-root input{font-size:16px}
 #hk-canvas{display:block;width:100%;height:100%}
 
 /* ---------- screens ---------- */
@@ -68,13 +72,21 @@ html,body{margin:0;height:100%;background:#0c0b08;overflow:hidden;
   text-shadow:0 2px 6px rgba(0,0,0,.8);pointer-events:none;white-space:pre}
 
 /* ---------- item slot ---------- */
-.hk-item{position:absolute;left:calc(2.2vw + var(--safe-l));top:calc(11vh + var(--safe-t));
-  width:clamp(58px,7.4vw,86px);height:clamp(58px,7.4vw,86px);z-index:30;
+.hk-item{position:absolute;left:calc(22px + clamp(88px,13vw,154px) + var(--safe-l));top:calc(78px + var(--safe-t));
+  width:88px;height:90px;z-index:30;flex-direction:column;gap:3px;
   border:3px solid rgba(240,192,112,.85);border-radius:12px;
   background:rgba(12,11,8,.42);display:flex;align-items:center;justify-content:center;
   font-size:clamp(9px,1.1vw,13px);font-weight:800;letter-spacing:.06em;color:var(--sun);
   text-align:center;pointer-events:none}
-.hk-item.empty{border-color:rgba(194,184,165,.26);color:rgba(194,184,165,.35)}
+.hk-item.empty{border-color:#b5b4a777;color:#ddd4c4}
+.hk-item svg{width:34px;height:34px;fill:currentColor}
+.hk-item small{font-size:7px;letter-spacing:0}
+.hk-itembtn{font-family:inherit;gap:4px;cursor:pointer}
+.hk-itembtn svg{width:22px;height:22px;fill:currentColor;flex-shrink:0}
+.hk-itembtn:disabled{opacity:.6;cursor:default}
+.hk-itembtn span{font-size:10px}
+body:not([data-state="racing"]):not([data-state="countdown"]):not([data-state="paused"]) .hk-item{display:none}
+@media(max-height:450px){.hk-item{left:calc(122px + var(--safe-l));top:calc(46px + var(--safe-t));width:84px;height:84px}}
 
 /* ---------- results ---------- */
 .hk-table{border-collapse:collapse;font-size:clamp(12px,1.7vw,17px);
